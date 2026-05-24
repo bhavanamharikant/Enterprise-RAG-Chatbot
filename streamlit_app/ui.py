@@ -16,15 +16,19 @@ from app.rag.ingest import ingest_documents
 API_URL = "http://127.0.0.1:8000/chat"
 
 
+# -----------------------------------
+# Page Config
+# -----------------------------------
+
 st.set_page_config(
     page_title="Enterprise RAG Chatbot",
     layout="wide"
 )
 
 
-# -----------------------------
+# -----------------------------------
 # Session State
-# -----------------------------
+# -----------------------------------
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -33,9 +37,9 @@ if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = []
 
 
-# -----------------------------
+# -----------------------------------
 # Sidebar
-# -----------------------------
+# -----------------------------------
 
 with st.sidebar:
 
@@ -68,20 +72,22 @@ with st.sidebar:
                     uploaded_file.name
                 )
 
-                st.success(f"Uploaded: {uploaded_file.name}")
+                st.success(
+                    f"Uploaded: {uploaded_file.name}"
+                )
 
                 new_files_uploaded = True
 
-
-        # Process ONLY if new files added
+        # Process documents ONLY once
         if new_files_uploaded:
 
             with st.spinner("Processing documents..."):
 
                 ingest_documents()
 
-            st.success("Documents processed successfully")
-
+            st.success(
+                "Documents processed successfully"
+            )
 
     st.divider()
 
@@ -103,9 +109,9 @@ with st.sidebar:
         st.warning("No documents uploaded")
 
 
-# -----------------------------
+# -----------------------------------
 # Main Chat UI
-# -----------------------------
+# -----------------------------------
 
 st.title("Enterprise Document Chatbot")
 
@@ -114,7 +120,10 @@ st.write(
 )
 
 
-# Display previous chat messages
+# -----------------------------------
+# Display Previous Messages
+# -----------------------------------
+
 for message in st.session_state.messages:
 
     with st.chat_message(message["role"]):
@@ -122,7 +131,10 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 
+# -----------------------------------
 # Chat Input
+# -----------------------------------
+
 question = st.chat_input(
     "Ask a question about your documents"
 )
@@ -130,16 +142,19 @@ question = st.chat_input(
 
 if question:
 
-    # Prevent chat without documents
+    # Prevent asking without PDFs
     if not st.session_state.uploaded_files:
 
         st.warning(
-            "Please upload at least one PDF document first."
+            "Please upload at least one PDF first."
         )
 
     else:
 
-        # Show user message
+        # -----------------------------------
+        # User Message
+        # -----------------------------------
+
         with st.chat_message("user"):
 
             st.markdown(question)
@@ -149,43 +164,57 @@ if question:
             "content": question
         })
 
-        # Generate Answer
+        # -----------------------------------
+        # Assistant Response
+        # -----------------------------------
+
         with st.chat_message("assistant"):
 
-            with st.spinner("Generating answer..."):
+            response_placeholder = st.empty()
 
-                try:
+            full_response = ""
 
-                    response = requests.post(
-                        API_URL,
-                        json={
-                            "question": question
-                        }
+            try:
+
+                response = requests.post(
+                    API_URL,
+                    json={
+                        "question": question
+                    },
+                    stream=True
+                )
+
+                if response.status_code != 200:
+
+                    st.error(
+                        f"Backend Error: "
+                        f"{response.status_code}"
                     )
 
-                    data = response.json()
+                else:
 
-                    answer = data["answer"]
+                    for chunk in response.iter_content(
+                        chunk_size=1,
+                        decode_unicode=True
+                    ):
 
-                    st.markdown(answer)
+                        if chunk:
 
-                    # Sources
-                    with st.expander("View Sources"):
+                            full_response += chunk
 
-                        for source in data["sources"]:
-
-                            st.write(
-                                f"📄 {source['source']} "
-                                f"(Page {source['page']})"
+                            response_placeholder.markdown(
+                                full_response + "▌"
                             )
 
-                    final_response = answer
+                    response_placeholder.markdown(
+                        full_response
+                    )
 
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": final_response
+                        "content": full_response
                     })
 
-                except Exception as e:
+            except Exception as e:
 
-                    st.error(f"Error: {e}")
+                st.error(f"Error: {e}")

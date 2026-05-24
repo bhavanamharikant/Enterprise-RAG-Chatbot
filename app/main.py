@@ -1,16 +1,12 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-
-from app.rag.generator import get_qa_chain
+from fastapi.responses import StreamingResponse
+from app.rag.langgraph_flow import graph
 
 
 app = FastAPI(
     title="Enterprise RAG Chatbot API"
 )
-
-
-# Load QA chain once during startup
-qa_chain = get_qa_chain()
 
 
 class ChatRequest(BaseModel):
@@ -28,23 +24,21 @@ def home():
 @app.post("/chat")
 async def chat(request: ChatRequest):
 
-    response = qa_chain.invoke({
-        "query": request.question
-    })
+    async def generate_response():
 
-    answer = response["result"]
+        result = graph.invoke({
 
-    sources = []
+            "question": request.question
 
-    for doc in response["source_documents"]:
-
-        sources.append({
-            "source": doc.metadata.get("source"),
-            "page": doc.metadata.get("page")
         })
 
-    return {
-        "question": request.question,
-        "answer": answer,
-        "sources": sources
-    }
+        answer = result["answer"]
+
+        for word in answer.split():
+
+            yield word + " "
+
+    return StreamingResponse(
+        generate_response(),
+        media_type="text/plain"
+    )

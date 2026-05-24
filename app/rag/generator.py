@@ -1,61 +1,40 @@
 from dotenv import load_dotenv
-
 from langchain_openai import ChatOpenAI
-
-from langchain_classic.chains import RetrievalQA
-
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
 from app.rag.retriever import get_vector_store
 
 
 load_dotenv()
 
 
-def get_qa_chain():
+def get_conversation_chain():
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
-        temperature=0
+        temperature=0,
+        streaming=True
     )
 
     vector_store = get_vector_store()
 
     retriever = vector_store.as_retriever(
-        search_kwargs={"k": 3}
+        search_type="similarity",
+        search_kwargs={"k": 6}
     )
 
-    qa_chain = RetrievalQA.from_chain_type(
+    memory=ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True,
+        output_key="answer"
+    )
+
+
+    conversation_chain=ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=retriever,
-        chain_type="stuff",
+        memory=memory,
         return_source_documents=True
     )
 
-    return qa_chain
-
-
-if __name__ == "__main__":
-
-    qa_chain = get_qa_chain()
-
-    while True:
-
-        question = input("\nAsk a question (or type 'exit'): ")
-
-        if question.lower() == "exit":
-            break
-
-        response = qa_chain.invoke({"query": question})
-
-        print("\nAnswer:")
-        print(response["result"])
-
-        print("\nSources Used:")
-        print("-" * 50)
-
-        for i, doc in enumerate(response["source_documents"], start=1):
-
-            source = doc.metadata.get("source", "Unknown")
-
-            page = doc.metadata.get("page", "N/A")
-
-            print(f"{i}. File: {source} | Page: {page}")
+    return conversation_chain
